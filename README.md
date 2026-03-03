@@ -44,8 +44,8 @@ md-bider 不是“在线文档工具”的桌面壳，而是一套针对本地 M
 ## 下载与发布
 
 - 最新稳定版：<https://github.com/cloveric/md-bider/releases/latest>
-- Windows 用户可直接下载发布页中的 `md-bider-vX.Y.Z-windows-x64.zip`
-- 解压后运行 `md-bider.exe`
+- Windows 用户下载 `md-bider-vX.Y.Z-windows-x64.zip`，解压后运行 `md-bider.exe`
+- macOS 用户下载 `md-bider-vX.Y.Z-macos-*.zip`，解压后将 `md-bider.app` 拖入 `Applications`
 
 ## 快速开始
 

@@ -15,8 +15,24 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  resolve-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Resolve release tag
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-windows:
     runs-on: windows-latest
+    needs: resolve-tag
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,23 +43,13 @@ jobs:
       - name: Restore Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Resolve release tag
-        id: meta
-        shell: pwsh
-        run: |
-          if ("${{ github.ref_type }}" -eq "tag") {
-            "tag=${{ github.ref_name }}" >> $env:GITHUB_OUTPUT
-          } else {
-            "tag=${{ inputs.tag }}" >> $env:GITHUB_OUTPUT
-          }
-
       - name: Build release binary
         run: cargo build --release
 
-      - name: Package zip asset
+      - name: Package Windows zip asset
         shell: pwsh
         run: |
-          $tag = "${{ steps.meta.outputs.tag }}"
+          $tag = "${{ needs.resolve-tag.outputs.tag }}"
           $assetName = "md-bider-$tag-windows-x64.zip"
           $dist = "dist"
           New-Item -ItemType Directory -Force -Path $dist | Out-Null
@@ -58,10 +64,116 @@ jobs:
           }
           Compress-Archive -Path $exeTarget -DestinationPath $zipPath
 
-      - name: Publish GitHub release
+      - name: Upload Windows package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/*.zip
+
+  build-macos:
+    runs-on: macos-latest
+    needs: resolve-tag
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Package macOS app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${{ needs.resolve-tag.outputs.tag }}"
+          ARCH="$(uname -m)"
+          if [ "$ARCH" = "x86_64" ]; then
+            PLATFORM="macos-x64"
+          elif [ "$ARCH" = "arm64" ]; then
+            PLATFORM="macos-arm64"
+          else
+            PLATFORM="macos-$ARCH"
+          fi
+
+          DIST="dist"
+          APP_DIR="$DIST/md-bider.app"
+          ICONSET_DIR="$DIST/md-bider.iconset"
+          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$ICONSET_DIR"
+
+          cp target/release/md-bider "$APP_DIR/Contents/MacOS/md-bider"
+          chmod +x "$APP_DIR/Contents/MacOS/md-bider"
+
+          cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>md-bider</string>
+            <key>CFBundleDisplayName</key>
+            <string>md-bider</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.cloveric.md-bider</string>
+            <key>CFBundleVersion</key>
+            <string>${{ github.run_number }}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${{ needs.resolve-tag.outputs.tag }}</string>
+            <key>CFBundleExecutable</key>
+            <string>md-bider</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>CFBundleIconFile</key>
+            <string>md-bider.icns</string>
+          </dict>
+          </plist>
+          PLIST
+
+          for size in 16 32 128 256 512; do
+            sips -z "$size" "$size" assets/app_icon.png --out "$ICONSET_DIR/icon_${size}x${size}.png" >/dev/null
+            sips -z "$((size * 2))" "$((size * 2))" assets/app_icon.png --out "$ICONSET_DIR/icon_${size}x${size}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$ICONSET_DIR" -o "$APP_DIR/Contents/Resources/md-bider.icns"
+
+          ASSET_NAME="md-bider-$TAG-$PLATFORM.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$DIST/$ASSET_NAME"
+
+      - name: Upload macOS package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/*.zip
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-tag
+      - build-windows
+      - build-macos
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Verify packages
+        run: ls -la dist
+
+      - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
+          tag_name: ${{ needs.resolve-tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           files: dist/*.zip
           generate_release_notes: true
+          overwrite_files: true
