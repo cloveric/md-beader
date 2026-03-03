@@ -13,6 +13,10 @@
     <img src="https://img.shields.io/badge/Platform-Windows-0078D4" alt="Platform" />
     <img src="https://img.shields.io/badge/Mode-IR%20%7C%20SV%20%7C%20WYSIWYG-2A5CAA" alt="Modes" />
     <img src="https://img.shields.io/badge/Network-Offline%20First-1D7F5F" alt="Offline" />
+    <img src="https://github.com/cloveric/md-reader/actions/workflows/ci.yml/badge.svg" alt="CI" />
+    <img src="https://github.com/cloveric/md-reader/actions/workflows/release.yml/badge.svg" alt="Release" />
+    <img src="https://img.shields.io/github/v/release/cloveric/md-reader?display_name=tag" alt="Latest Release" />
+    <img src="https://img.shields.io/github/downloads/cloveric/md-reader/total" alt="Downloads" />
   </p>
 </div>
 
@@ -36,6 +40,12 @@ Markdown Studio 不是“在线文档工具”的桌面壳，而是一套针对�
 | 快捷键 | `Ctrl+N/O/S/Shift+S` |
 | 离线能力 | 编辑引擎、样式、语言包均内嵌到可执行文件 |
 | 命令行启动 | 支持 `markdown_reader.exe <file.md>` 直接打开文件 |
+
+## 下载与发布
+
+- 最新稳定版：<https://github.com/cloveric/md-reader/releases/latest>
+- Windows 用户可直接下载发布页中的 `markdown-studio-vX.Y.Z-windows-x64.zip`
+- 解压后运行 `markdown_reader.exe`
 
 ## 快速开始
 

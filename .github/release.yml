@@ -1,0 +1,23 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: "Features"
+      labels:
+        - feat
+        - feature
+    - title: "Fixes"
+      labels:
+        - fix
+        - bug
+    - title: "Documentation"
+      labels:
+        - docs
+    - title: "Refactor / Chore"
+      labels:
+        - refactor
+        - chore
+    - title: "Other Changes"
+      labels:
+        - "*"

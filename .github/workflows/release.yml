@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.1.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Resolve release tag
+        id: meta
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            "tag=${{ github.ref_name }}" >> $env:GITHUB_OUTPUT
+          } else {
+            "tag=${{ inputs.tag }}" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Package zip asset
+        id: package
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.meta.outputs.tag }}"
+          $assetName = "markdown-studio-$tag-windows-x64.zip"
+          $dist = "dist"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+
+          $exeSource = "target/release/markdown_reader.exe"
+          $exeTarget = Join-Path $dist "markdown_reader.exe"
+          Copy-Item $exeSource $exeTarget -Force
+
+          $zipPath = Join-Path $dist $assetName
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+          Compress-Archive -Path $exeTarget -DestinationPath $zipPath
+
+          "zip=$zipPath" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: ${{ steps.package.outputs.zip }}
+          generate_release_notes: true
