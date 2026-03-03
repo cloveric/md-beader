@@ -1,4 +1,4 @@
-# md-bider
+# md-bider (马得笔)
 
 English | [简体中文](README.zh-CN.md)
 

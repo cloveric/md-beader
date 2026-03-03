@@ -135,7 +135,7 @@ fn main() -> wry::Result<()> {
     let window_icon = load_window_icon();
 
     let window = WindowBuilder::new()
-        .with_title("md-bider")
+        .with_title("md-bider · 马得笔")
         .with_window_icon(window_icon)
         .with_inner_size(LogicalSize::new(1280.0, 860.0))
         .build(&event_loop)
