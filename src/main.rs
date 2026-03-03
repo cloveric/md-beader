@@ -55,13 +55,33 @@ fn send_event(webview: &WebView, event: HostEvent) {
     }
 }
 
-fn open_file_into_editor(webview: &WebView, path: PathBuf, current_file: &mut Option<PathBuf>) {
+fn next_tab_id(tab_seq: &mut u64) -> String {
+    *tab_seq += 1;
+    format!("tab-{}", tab_seq)
+}
+
+fn normalize_path(path: Option<String>) -> Option<PathBuf> {
+    let raw = path?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(trimmed))
+    }
+}
+
+fn default_name_from_path(path: Option<&PathBuf>) -> &str {
+    path.and_then(|p| p.file_name().and_then(|name| name.to_str()))
+        .unwrap_or("untitled.md")
+}
+
+fn open_file_into_editor(webview: &WebView, tab_id: String, path: PathBuf) {
     match read_text_with_fallback(&path) {
         Ok(content) => {
-            *current_file = Some(path.clone());
             send_event(
                 webview,
                 HostEvent::FileOpened {
+                    tab_id,
                     path: path.display().to_string(),
                     content,
                 },
@@ -78,18 +98,13 @@ fn open_file_into_editor(webview: &WebView, path: PathBuf, current_file: &mut Op
     }
 }
 
-fn save_content_to_path(
-    webview: &WebView,
-    path: PathBuf,
-    content: &str,
-    current_file: &mut Option<PathBuf>,
-) {
+fn save_content_to_path(webview: &WebView, tab_id: String, path: PathBuf, content: &str) {
     match write_text_utf8(&path, content) {
         Ok(()) => {
-            *current_file = Some(path.clone());
             send_event(
                 webview,
                 HostEvent::FileSaved {
+                    tab_id,
                     path: path.display().to_string(),
                 },
             );
@@ -124,8 +139,8 @@ fn main() -> wry::Result<()> {
         })
         .build(&window)?;
 
-    let mut current_file: Option<PathBuf> = None;
     let mut pending_initial_file = initial_file;
+    let mut tab_seq: u64 = 0;
 
     event_loop.run(move |event, _window_target, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -138,7 +153,7 @@ fn main() -> wry::Result<()> {
                 *control_flow = ControlFlow::Exit;
             }
             Event::UserEvent(UserEvent::Ipc(payload)) => match IpcCommand::parse(&payload) {
-                Ok(IpcCommand::AppReady) => {
+                Ok(IpcCommand::AppReady { tab_id }) => {
                     send_event(
                         &webview,
                         HostEvent::Status {
@@ -146,51 +161,63 @@ fn main() -> wry::Result<()> {
                         },
                     );
                     if let Some(path) = pending_initial_file.take() {
-                        open_file_into_editor(&webview, path, &mut current_file);
+                        let target_tab_id = tab_id.unwrap_or_else(|| next_tab_id(&mut tab_seq));
+                        open_file_into_editor(&webview, target_tab_id, path);
                     }
                 }
-                Ok(IpcCommand::NewFile) => {
-                    current_file = None;
+                Ok(IpcCommand::NewFile { tab_id }) => {
+                    let target_tab_id = tab_id.unwrap_or_else(|| next_tab_id(&mut tab_seq));
                     send_event(
                         &webview,
                         HostEvent::FileOpened {
+                            tab_id: target_tab_id,
                             path: String::new(),
                             content: String::new(),
                         },
                     );
                 }
-                Ok(IpcCommand::OpenFile) => {
+                Ok(IpcCommand::OpenFile { tab_id }) => {
                     let file = FileDialog::new()
                         .add_filter("Markdown", &["md", "markdown", "txt"])
                         .pick_file();
                     if let Some(path) = file {
-                        open_file_into_editor(&webview, path, &mut current_file);
+                        let target_tab_id = tab_id.unwrap_or_else(|| next_tab_id(&mut tab_seq));
+                        open_file_into_editor(&webview, target_tab_id, path);
                     }
                 }
-                Ok(IpcCommand::SaveFile { content }) => {
-                    if let Some(path) = current_file.clone() {
-                        save_content_to_path(&webview, path, &content, &mut current_file);
+                Ok(IpcCommand::SaveFile {
+                    tab_id,
+                    path,
+                    content,
+                }) => {
+                    let target_tab_id = tab_id.unwrap_or_else(|| next_tab_id(&mut tab_seq));
+                    let current_path = normalize_path(path);
+                    if let Some(path) = current_path {
+                        save_content_to_path(&webview, target_tab_id, path, &content);
                     } else {
                         let file = FileDialog::new()
                             .add_filter("Markdown", &["md", "markdown", "txt"])
-                            .set_file_name("untitled.md")
+                            .set_file_name(default_name_from_path(None))
                             .save_file();
                         if let Some(path) = file {
-                            save_content_to_path(&webview, path, &content, &mut current_file);
+                            save_content_to_path(&webview, target_tab_id, path, &content);
                         }
                     }
                 }
-                Ok(IpcCommand::SaveAs { content }) => {
-                    let default_name = current_file
-                        .as_ref()
-                        .and_then(|path| path.file_name().and_then(|name| name.to_str()))
-                        .unwrap_or("untitled.md");
+                Ok(IpcCommand::SaveAs {
+                    tab_id,
+                    path,
+                    content,
+                }) => {
+                    let target_tab_id = tab_id.unwrap_or_else(|| next_tab_id(&mut tab_seq));
+                    let current_path = normalize_path(path);
+                    let default_name = default_name_from_path(current_path.as_ref());
                     let file = FileDialog::new()
                         .add_filter("Markdown", &["md", "markdown", "txt"])
                         .set_file_name(default_name)
                         .save_file();
                     if let Some(path) = file {
-                        save_content_to_path(&webview, path, &content, &mut current_file);
+                        save_content_to_path(&webview, target_tab_id, path, &content);
                     }
                 }
                 Err(err) => {

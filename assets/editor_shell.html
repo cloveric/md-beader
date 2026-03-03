@@ -15,6 +15,8 @@
       --primary: #3264c8;
       --primary-hover: #274f9f;
       --danger: #b73434;
+      --tab-bg: #f3f7fd;
+      --tab-hover: #e6eefc;
     }
     * {
       box-sizing: border-box;
@@ -76,7 +78,7 @@
     .path {
       color: var(--muted);
       font-size: 12px;
-      max-width: 42vw;
+      max-width: 36vw;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -89,9 +91,69 @@
     .status.error {
       color: var(--danger);
     }
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--toolbar-border);
+      background: #eef4fc;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .tabs:empty {
+      padding: 0;
+      border-bottom: 0;
+    }
+    .tab {
+      display: inline-flex;
+      align-items: center;
+      max-width: 260px;
+      background: var(--tab-bg);
+      border: 1px solid #cfdaeb;
+      border-radius: 10px;
+      padding: 5px 8px;
+      cursor: pointer;
+      color: #2a3850;
+      user-select: none;
+      transition: background 0.12s ease;
+    }
+    .tab:hover {
+      background: var(--tab-hover);
+    }
+    .tab.active {
+      background: #ffffff;
+      border-color: var(--primary);
+      color: var(--primary);
+      box-shadow: 0 4px 10px rgba(60, 92, 148, 0.15);
+    }
+    .tab-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 210px;
+      font-size: 12px;
+    }
+    .tab-close {
+      margin-left: 8px;
+      border: 0;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      line-height: 16px;
+      background: transparent;
+      color: #6a788c;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 0;
+    }
+    .tab-close:hover {
+      background: #dfe8f8;
+      color: #2a3e62;
+    }
     .editor-wrap {
       padding: 10px;
-      height: calc(100vh - 56px);
+      flex: 1;
+      min-height: 0;
     }
     #editorRoot {
       height: 100%;
@@ -117,19 +179,26 @@
       <span id="filePath" class="path">未打开文件</span>
       <span id="status" class="status">准备中...</span>
     </div>
+    <div id="tabs" class="tabs"></div>
     <div class="editor-wrap">
       <div id="editorRoot"></div>
     </div>
   </div>
   <script>
     let editor = null;
-    let currentPath = "";
     let currentMode = "ir";
     let readySent = false;
     let engineBooted = false;
     let engineError = "";
+    let suppressEditorInput = false;
+    let tabSeq = 0;
+    let untitledSeq = 0;
+    let activeTabId = "";
+
+    const tabs = [];
     const statusEl = document.getElementById("status");
     const pathEl = document.getElementById("filePath");
+    const tabsEl = document.getElementById("tabs");
     const modeButtons = {
       sv: document.getElementById("svBtn"),
       ir: document.getElementById("irBtn"),
@@ -155,8 +224,7 @@
     }
 
     function setPath(path) {
-      currentPath = path || "";
-      pathEl.textContent = currentPath || "未打开文件";
+      pathEl.textContent = path || "未打开文件";
       pathEl.title = pathEl.textContent;
     }
 
@@ -164,13 +232,6 @@
       Object.entries(modeButtons).forEach(([mode, btn]) => {
         btn.classList.toggle("active", mode === currentMode);
       });
-    }
-
-    function getEditorValue() {
-      if (!editor) {
-        return "";
-      }
-      return editor.getValue();
     }
 
     function decodeBase64Utf8(input) {
@@ -229,6 +290,220 @@
       return !!window[ENGINE_GLOBAL];
     }
 
+    function basename(path) {
+      if (!path) {
+        return "";
+      }
+      const normalized = String(path).replaceAll("\\", "/");
+      const parts = normalized.split("/").filter(Boolean);
+      return parts.length > 0 ? parts[parts.length - 1] : "";
+    }
+
+    function nextTabId() {
+      tabSeq += 1;
+      return `tab-${tabSeq}`;
+    }
+
+    function syncTabSeqFromId(tabId) {
+      const match = /^tab-(\d+)$/.exec(tabId || "");
+      if (!match) {
+        return;
+      }
+      const numericId = Number(match[1]);
+      if (Number.isFinite(numericId)) {
+        tabSeq = Math.max(tabSeq, numericId);
+      }
+    }
+
+    function nextUntitledTitle() {
+      untitledSeq += 1;
+      return `未命名 ${untitledSeq}`;
+    }
+
+    function getActiveTab() {
+      return tabs.find((tab) => tab.id === activeTabId) || null;
+    }
+
+    function getEditorValue() {
+      if (!editor) {
+        return "";
+      }
+      return editor.getValue();
+    }
+
+    function persistActiveTabContent() {
+      const active = getActiveTab();
+      if (!active) {
+        return;
+      }
+      active.content = getEditorValue();
+    }
+
+    function renderTabs() {
+      tabsEl.innerHTML = "";
+      tabs.forEach((tab) => {
+        const tabEl = document.createElement("div");
+        tabEl.className = `tab${tab.id === activeTabId ? " active" : ""}`;
+        tabEl.dataset.tabId = tab.id;
+
+        const titleEl = document.createElement("span");
+        titleEl.className = "tab-title";
+        const dirtyPrefix = tab.dirty ? "● " : "";
+        titleEl.textContent = `${dirtyPrefix}${tab.title}`;
+        titleEl.title = tab.path || tab.title;
+        tabEl.appendChild(titleEl);
+
+        const closeEl = document.createElement("button");
+        closeEl.className = "tab-close";
+        closeEl.textContent = "×";
+        closeEl.title = "关闭标签";
+        closeEl.addEventListener("click", (event) => {
+          event.stopPropagation();
+          closeTab(tab.id);
+        });
+        tabEl.appendChild(closeEl);
+
+        tabEl.addEventListener("click", () => activateTab(tab.id));
+        tabsEl.appendChild(tabEl);
+      });
+    }
+
+    function setEditorContent(value) {
+      if (!editor) {
+        return;
+      }
+      suppressEditorInput = true;
+      editor.setValue(value || "");
+      suppressEditorInput = false;
+    }
+
+    function activateTab(tabId) {
+      if (!tabId || tabId === activeTabId) {
+        return;
+      }
+      persistActiveTabContent();
+      activeTabId = tabId;
+      const active = getActiveTab();
+      renderTabs();
+      if (active) {
+        setPath(active.path || "");
+        setEditorContent(active.content || "");
+      }
+      setStatus("已切换标签");
+    }
+
+    function addTab({ id, path = "", content = "", title = "", activate = true }) {
+      syncTabSeqFromId(id);
+      const inferredTitle = basename(path) || title || nextUntitledTitle();
+      const tab = {
+        id,
+        path,
+        title: inferredTitle,
+        content,
+        dirty: false,
+      };
+      tabs.push(tab);
+      if (activate) {
+        activeTabId = id;
+      }
+      renderTabs();
+      if (activate) {
+        setPath(path);
+        if (editor) {
+          setEditorContent(content);
+        }
+      }
+      return tab;
+    }
+
+    function ensureOneTab() {
+      if (tabs.length > 0) {
+        return;
+      }
+      const tab = addTab({ id: nextTabId(), content: "", title: nextUntitledTitle(), activate: true });
+      setPath(tab.path);
+    }
+
+    function markActiveTabDirty() {
+      const active = getActiveTab();
+      if (!active) {
+        return;
+      }
+      active.content = getEditorValue();
+      active.dirty = true;
+      renderTabs();
+    }
+
+    function closeTab(tabId) {
+      const index = tabs.findIndex((tab) => tab.id === tabId);
+      if (index === -1) {
+        return;
+      }
+      const tab = tabs[index];
+      if (tab.dirty) {
+        const ok = window.confirm(`标签“${tab.title}”尚未保存，确定关闭吗？`);
+        if (!ok) {
+          return;
+        }
+      }
+
+      if (tabs.length === 1) {
+        tabs[0] = {
+          id: nextTabId(),
+          path: "",
+          title: nextUntitledTitle(),
+          content: "",
+          dirty: false,
+        };
+        activeTabId = tabs[0].id;
+        renderTabs();
+        setPath("");
+        setEditorContent("");
+        setStatus("已关闭标签");
+        return;
+      }
+
+      tabs.splice(index, 1);
+      if (activeTabId === tabId) {
+        const fallbackIndex = Math.max(0, index - 1);
+        activeTabId = tabs[fallbackIndex].id;
+      }
+      const active = getActiveTab();
+      renderTabs();
+      if (active) {
+        setPath(active.path || "");
+        setEditorContent(active.content || "");
+      }
+      setStatus("已关闭标签");
+    }
+
+    function upsertOpenedTab(tabId, path, content) {
+      syncTabSeqFromId(tabId);
+      const found = tabs.find((tab) => tab.id === tabId);
+      const title = basename(path) || found?.title || nextUntitledTitle();
+      if (found) {
+        found.path = path || "";
+        found.content = content || "";
+        found.title = title;
+        found.dirty = false;
+      } else {
+        tabs.push({
+          id: tabId,
+          path: path || "",
+          content: content || "",
+          title,
+          dirty: false,
+        });
+      }
+      activeTabId = tabId;
+      renderTabs();
+      const active = getActiveTab();
+      if (active) {
+        setPath(active.path || "");
+        setEditorContent(active.content || "");
+      }
+    }
+
     function createEditor(value = "") {
       if (!ensureEngineLoaded()) {
         const reason = engineError || "未知错误";
@@ -241,14 +516,13 @@
         return;
       }
 
-      const initial = value;
       const container = document.getElementById("editorRoot");
       container.innerHTML = "";
 
       editor = new EditorCtor("editorRoot", {
         mode: currentMode,
         height: "100%",
-        value: initial,
+        value,
         lang: "zh_CN",
         i18n: window[ENGINE_I18N_GLOBAL],
         icon: "",
@@ -295,12 +569,16 @@
           },
         },
         input() {
+          if (suppressEditorInput) {
+            return;
+          }
+          markActiveTabDirty();
           setStatus("编辑中");
         },
         after() {
           updateModeButtons();
           if (!readySent) {
-            hostSend({ cmd: "app_ready" });
+            hostSend({ cmd: "app_ready", tab_id: activeTabId || null });
             readySent = true;
           }
           setStatus("就绪");
@@ -312,10 +590,29 @@
       if (!mode || mode === currentMode) {
         return;
       }
-      const content = getEditorValue();
+      persistActiveTabContent();
       currentMode = mode;
-      createEditor(content);
+      createEditor(getActiveTab()?.content || "");
       setStatus(`切换模式: ${mode.toUpperCase()}`);
+    }
+
+    function requestOpenFile() {
+      hostSend({ cmd: "open_file", tab_id: nextTabId() });
+    }
+
+    function requestSave(saveAs) {
+      const active = getActiveTab();
+      if (!active) {
+        return;
+      }
+      persistActiveTabContent();
+      const payload = {
+        cmd: saveAs ? "save_as" : "save_file",
+        tab_id: active.id,
+        path: active.path || null,
+        content: active.content || "",
+      };
+      hostSend(payload);
     }
 
     window.__HOST__ = {
@@ -324,17 +621,22 @@
           return;
         }
         if (message.event === "file_opened") {
-          setPath(message.path || "");
-          if (editor) {
-            editor.setValue(message.content || "");
-          } else {
-            createEditor(message.content || "");
-          }
+          const tabId = message.tab_id || nextTabId();
+          upsertOpenedTab(tabId, message.path || "", message.content || "");
           setStatus(message.path ? "文件已打开" : "新建文件");
           return;
         }
         if (message.event === "file_saved") {
-          setPath(message.path || currentPath);
+          const target = tabs.find((tab) => tab.id === message.tab_id);
+          if (target) {
+            target.path = message.path || target.path;
+            target.title = basename(target.path) || target.title;
+            target.dirty = false;
+          }
+          if (message.tab_id === activeTabId) {
+            setPath(message.path || target?.path || "");
+          }
+          renderTabs();
           setStatus("保存成功");
           return;
         }
@@ -349,16 +651,19 @@
     };
 
     document.getElementById("newBtn").addEventListener("click", () => {
-      hostSend({ cmd: "new_file" });
+      persistActiveTabContent();
+      const tab = addTab({ id: nextTabId(), content: "", title: nextUntitledTitle(), activate: true });
+      setEditorContent(tab.content);
+      setStatus("新建标签");
     });
     document.getElementById("openBtn").addEventListener("click", () => {
-      hostSend({ cmd: "open_file" });
+      requestOpenFile();
     });
     document.getElementById("saveBtn").addEventListener("click", () => {
-      hostSend({ cmd: "save_file", content: getEditorValue() });
+      requestSave(false);
     });
     document.getElementById("saveAsBtn").addEventListener("click", () => {
-      hostSend({ cmd: "save_as", content: getEditorValue() });
+      requestSave(true);
     });
     modeButtons.sv.addEventListener("click", () => switchMode("sv"));
     modeButtons.ir.addEventListener("click", () => switchMode("ir"));
@@ -372,21 +677,25 @@
       const key = event.key.toLowerCase();
       if (key === "n") {
         event.preventDefault();
-        hostSend({ cmd: "new_file" });
+        document.getElementById("newBtn").click();
       } else if (key === "o") {
         event.preventDefault();
-        hostSend({ cmd: "open_file" });
+        requestOpenFile();
+      } else if (key === "w") {
+        event.preventDefault();
+        closeTab(activeTabId);
       } else if (key === "s" && event.shiftKey) {
         event.preventDefault();
-        hostSend({ cmd: "save_as", content: getEditorValue() });
+        requestSave(true);
       } else if (key === "s") {
         event.preventDefault();
-        hostSend({ cmd: "save_file", content: getEditorValue() });
+        requestSave(false);
       }
     });
 
+    ensureOneTab();
     updateModeButtons();
-    createEditor("");
+    createEditor(getActiveTab()?.content || "");
   </script>
 </body>
 </html>
