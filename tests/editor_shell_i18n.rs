@@ -26,3 +26,16 @@ fn includes_english_and_chinese_ui_dictionary() {
     assert!(html.contains("Open"), "expected English UI labels");
     assert!(html.contains("打开"), "expected Chinese UI labels");
 }
+
+#[test]
+fn defaults_to_english_without_saved_locale() {
+    let html = shell_html();
+    assert!(
+        html.contains("const storedLocale = readStoredLocale();"),
+        "expected bootstrap variable for saved locale"
+    );
+    assert!(
+        html.contains("let appLocale = storedLocale ? normalizeLocale(storedLocale) : \"en\";"),
+        "expected default locale to be English when no saved preference exists"
+    );
+}

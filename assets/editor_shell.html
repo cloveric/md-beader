@@ -268,8 +268,6 @@
           <button id="irBtn" class="btn mode">所见即所得 IR</button>
           <button id="wysiwygBtn" class="btn mode">富文本 WYSIWYG</button>
         </div>
-      </div>
-      <div class="toolbar-right">
         <label class="lang-wrap" for="langSelect">
           <span id="langLabel" class="lang-label">语言</span>
           <select id="langSelect" class="lang-select">
@@ -277,6 +275,8 @@
             <option value="en">English</option>
           </select>
         </label>
+      </div>
+      <div class="toolbar-right">
         <span id="filePath" class="path">未打开文件</span>
         <span id="status" class="status">准备中...</span>
       </div>
@@ -404,7 +404,8 @@
       }
     }
 
-    let appLocale = normalizeLocale(readStoredLocale() || document.documentElement.lang || navigator.language);
+    const storedLocale = readStoredLocale();
+    let appLocale = storedLocale ? normalizeLocale(storedLocale) : "en";
 
     function textTable() {
       return UI_TEXT[appLocale] || UI_TEXT["zh-CN"];
@@ -833,15 +834,12 @@
 
       const container = document.getElementById("editorRoot");
       container.innerHTML = "";
-      const editorLang = appLocale === "en" ? "en" : "zh_CN";
+      const editorLang = appLocale === "en" ? "en_US" : "zh_CN";
       const editorI18n = appLocale === "en" ? undefined : window[ENGINE_I18N_GLOBAL];
-
-      editor = new EditorCtor("editorRoot", {
+      const baseOptions = {
         mode: currentMode,
         height: "100%",
         value,
-        lang: editorLang,
-        i18n: editorI18n,
         icon: "",
         toolbar: [
           "emoji",
@@ -900,7 +898,27 @@
           }
           setStatus(t("statusReady"));
         },
-      });
+      };
+
+      try {
+        editor = new EditorCtor("editorRoot", {
+          ...baseOptions,
+          lang: editorLang,
+          i18n: editorI18n,
+        });
+      } catch (error) {
+        if (appLocale === "en") {
+          editor = new EditorCtor("editorRoot", {
+            ...baseOptions,
+            lang: "zh_CN",
+            i18n: window[ENGINE_I18N_GLOBAL],
+          });
+          const reason = error instanceof Error ? error.message : String(error);
+          setStatus(`English editor fallback: ${reason}`, true);
+          return;
+        }
+        throw error;
+      }
     }
 
     function switchMode(mode) {
