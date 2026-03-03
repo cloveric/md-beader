@@ -1,0 +1,16 @@
+# Ignore build artifacts
+/target/
+
+# WebView2 runtime data generated next to exe
+*.exe.WebView2/
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

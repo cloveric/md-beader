@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Markdown Studio</title>
+  <style>
+    :root {
+      --bg: #edf3f9;
+      --toolbar-bg: #f8fbff;
+      --toolbar-border: #d2dceb;
+      --surface: #ffffff;
+      --text: #1f2a37;
+      --muted: #5a6778;
+      --primary: #3264c8;
+      --primary-hover: #274f9f;
+      --danger: #b73434;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    }
+    #app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--toolbar-border);
+      background: var(--toolbar-bg);
+    }
+    .btn {
+      border: 1px solid #c9d5e6;
+      background: #fff;
+      color: #243243;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background: #edf4ff;
+      border-color: #b8c8e3;
+    }
+    .btn.primary {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn.primary:hover {
+      background: var(--primary-hover);
+    }
+    .btn.mode {
+      min-width: 80px;
+    }
+    .btn.mode.active {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: #ecf3ff;
+    }
+    .toolbar .spacer {
+      flex: 1;
+    }
+    .path {
+      color: var(--muted);
+      font-size: 12px;
+      max-width: 42vw;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .status {
+      font-size: 12px;
+      color: var(--muted);
+      margin-left: 8px;
+    }
+    .status.error {
+      color: var(--danger);
+    }
+    .editor-wrap {
+      padding: 10px;
+      height: calc(100vh - 56px);
+    }
+    #editorRoot {
+      height: 100%;
+      border: 1px solid var(--toolbar-border);
+      border-radius: 12px;
+      background: var(--surface);
+      overflow: hidden;
+      box-shadow: 0 10px 28px rgba(42, 68, 110, 0.09);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="toolbar">
+      <button id="newBtn" class="btn">新建</button>
+      <button id="openBtn" class="btn">打开</button>
+      <button id="saveBtn" class="btn primary">保存</button>
+      <button id="saveAsBtn" class="btn">另存为</button>
+      <button id="svBtn" class="btn mode">分栏 SV</button>
+      <button id="irBtn" class="btn mode">所见即所得 IR</button>
+      <button id="wysiwygBtn" class="btn mode">富文本 WYSIWYG</button>
+      <span class="spacer"></span>
+      <span id="filePath" class="path">未打开文件</span>
+      <span id="status" class="status">准备中...</span>
+    </div>
+    <div class="editor-wrap">
+      <div id="editorRoot"></div>
+    </div>
+  </div>
+  <script>
+    let editor = null;
+    let currentPath = "";
+    let currentMode = "ir";
+    let readySent = false;
+    let engineBooted = false;
+    let engineError = "";
+    const statusEl = document.getElementById("status");
+    const pathEl = document.getElementById("filePath");
+    const modeButtons = {
+      sv: document.getElementById("svBtn"),
+      ir: document.getElementById("irBtn"),
+      wysiwyg: document.getElementById("wysiwygBtn"),
+    };
+    const ENGINE_GLOBAL = String.fromCharCode(86, 100, 105, 116, 111, 114);
+    const ENGINE_I18N_GLOBAL = String.fromCharCode(86, 100, 105, 116, 111, 114, 73, 49, 56, 110);
+    const ENGINE_ICON_GLOBAL = String.fromCharCode(86, 100, 105, 116, 111, 114, 83, 118, 103, 115);
+    const ENGINE_JS_B64 = window.__ENGINE_JS_B64__ || "";
+    const ENGINE_CSS_B64 = window.__ENGINE_CSS_B64__ || "";
+    const ENGINE_ICON_B64 = window.__ENGINE_ICON_B64__ || "";
+    const ENGINE_I18N_B64 = window.__ENGINE_I18N_B64__ || "";
+
+    function hostSend(message) {
+      if (window.ipc && typeof window.ipc.postMessage === "function") {
+        window.ipc.postMessage(JSON.stringify(message));
+      }
+    }
+
+    function setStatus(text, isError = false) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle("error", isError);
+    }
+
+    function setPath(path) {
+      currentPath = path || "";
+      pathEl.textContent = currentPath || "未打开文件";
+      pathEl.title = pathEl.textContent;
+    }
+
+    function updateModeButtons() {
+      Object.entries(modeButtons).forEach(([mode, btn]) => {
+        btn.classList.toggle("active", mode === currentMode);
+      });
+    }
+
+    function getEditorValue() {
+      if (!editor) {
+        return "";
+      }
+      return editor.getValue();
+    }
+
+    function decodeBase64Utf8(input) {
+      const raw = atob(input);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i += 1) {
+        bytes[i] = raw.charCodeAt(i);
+      }
+      return new TextDecoder("utf-8").decode(bytes);
+    }
+
+    function evalBase64Script(input) {
+      if (!input) {
+        return;
+      }
+      const scriptText = decodeBase64Utf8(input);
+      (0, eval)(scriptText);
+    }
+
+    function ensureEngineLoaded() {
+      if (window[ENGINE_GLOBAL]) {
+        return true;
+      }
+      if (engineBooted) {
+        return !!window[ENGINE_GLOBAL];
+      }
+
+      try {
+        if (!ENGINE_JS_B64 || !ENGINE_CSS_B64) {
+          engineError = "内嵌资源未注入";
+          return false;
+        }
+        const cssText = decodeBase64Utf8(ENGINE_CSS_B64);
+        if (!document.getElementById("engine-style")) {
+          const style = document.createElement("style");
+          style.id = "engine-style";
+          style.textContent = cssText;
+          document.head.appendChild(style);
+        }
+
+        if (!window[ENGINE_I18N_GLOBAL]) {
+          evalBase64Script(ENGINE_I18N_B64);
+        }
+        if (!window[ENGINE_ICON_GLOBAL]) {
+          evalBase64Script(ENGINE_ICON_B64);
+        }
+
+        const jsText = decodeBase64Utf8(ENGINE_JS_B64);
+        (0, eval)(jsText);
+        engineBooted = true;
+      } catch (error) {
+        engineError = error instanceof Error ? error.message : String(error);
+        return false;
+      }
+
+      return !!window[ENGINE_GLOBAL];
+    }
+
+    function createEditor(value = "") {
+      if (!ensureEngineLoaded()) {
+        const reason = engineError || "未知错误";
+        setStatus(`编辑引擎未加载: ${reason}`, true);
+        return;
+      }
+      const EditorCtor = window[ENGINE_GLOBAL];
+      if (!EditorCtor) {
+        setStatus("编辑引擎未加载。", true);
+        return;
+      }
+
+      const initial = value;
+      const container = document.getElementById("editorRoot");
+      container.innerHTML = "";
+
+      editor = new EditorCtor("editorRoot", {
+        mode: currentMode,
+        height: "100%",
+        value: initial,
+        lang: "zh_CN",
+        i18n: window[ENGINE_I18N_GLOBAL],
+        icon: "",
+        toolbar: [
+          "emoji",
+          "headings",
+          "bold",
+          "italic",
+          "strike",
+          "|",
+          "line",
+          "quote",
+          "list",
+          "ordered-list",
+          "check",
+          "|",
+          "code",
+          "inline-code",
+          "link",
+          "table",
+          "|",
+          "undo",
+          "redo",
+          "|",
+          "edit-mode",
+          "both",
+          "preview",
+          "fullscreen"
+        ],
+        toolbarConfig: {
+          pin: true,
+          hide: false,
+        },
+        counter: {
+          enable: true,
+          type: "markdown",
+        },
+        cache: {
+          enable: false,
+        },
+        preview: {
+          markdown: {
+            toc: true,
+          },
+        },
+        input() {
+          setStatus("编辑中");
+        },
+        after() {
+          updateModeButtons();
+          if (!readySent) {
+            hostSend({ cmd: "app_ready" });
+            readySent = true;
+          }
+          setStatus("就绪");
+        },
+      });
+    }
+
+    function switchMode(mode) {
+      if (!mode || mode === currentMode) {
+        return;
+      }
+      const content = getEditorValue();
+      currentMode = mode;
+      createEditor(content);
+      setStatus(`切换模式: ${mode.toUpperCase()}`);
+    }
+
+    window.__HOST__ = {
+      onMessage(message) {
+        if (!message || !message.event) {
+          return;
+        }
+        if (message.event === "file_opened") {
+          setPath(message.path || "");
+          if (editor) {
+            editor.setValue(message.content || "");
+          } else {
+            createEditor(message.content || "");
+          }
+          setStatus(message.path ? "文件已打开" : "新建文件");
+          return;
+        }
+        if (message.event === "file_saved") {
+          setPath(message.path || currentPath);
+          setStatus("保存成功");
+          return;
+        }
+        if (message.event === "status") {
+          setStatus(message.message || "");
+          return;
+        }
+        if (message.event === "error") {
+          setStatus(message.message || "发生错误", true);
+        }
+      },
+    };
+
+    document.getElementById("newBtn").addEventListener("click", () => {
+      hostSend({ cmd: "new_file" });
+    });
+    document.getElementById("openBtn").addEventListener("click", () => {
+      hostSend({ cmd: "open_file" });
+    });
+    document.getElementById("saveBtn").addEventListener("click", () => {
+      hostSend({ cmd: "save_file", content: getEditorValue() });
+    });
+    document.getElementById("saveAsBtn").addEventListener("click", () => {
+      hostSend({ cmd: "save_as", content: getEditorValue() });
+    });
+    modeButtons.sv.addEventListener("click", () => switchMode("sv"));
+    modeButtons.ir.addEventListener("click", () => switchMode("ir"));
+    modeButtons.wysiwyg.addEventListener("click", () => switchMode("wysiwyg"));
+
+    window.addEventListener("keydown", (event) => {
+      const hotkey = event.ctrlKey || event.metaKey;
+      if (!hotkey) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "n") {
+        event.preventDefault();
+        hostSend({ cmd: "new_file" });
+      } else if (key === "o") {
+        event.preventDefault();
+        hostSend({ cmd: "open_file" });
+      } else if (key === "s" && event.shiftKey) {
+        event.preventDefault();
+        hostSend({ cmd: "save_as", content: getEditorValue() });
+      } else if (key === "s") {
+        event.preventDefault();
+        hostSend({ cmd: "save_file", content: getEditorValue() });
+      }
+    });
+
+    updateModeButtons();
+    createEditor("");
+  </script>
+</body>
+</html>

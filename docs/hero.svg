@@ -1,0 +1,32 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#172C4B"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="160" y1="130" x2="960" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4DA3FF" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#79F0D4" stop-opacity="0.35"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="420" rx="24" fill="url(#bg)"/>
+  <rect x="56" y="56" width="1088" height="308" rx="20" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.15)"/>
+  <ellipse cx="960" cy="70" rx="260" ry="140" fill="url(#accent)"/>
+
+  <text x="96" y="158" fill="#F3F7FF" font-family="Segoe UI, Microsoft YaHei, Arial" font-size="54" font-weight="700">
+    Markdown Studio
+  </text>
+  <text x="96" y="212" fill="#D4E3FF" font-family="Segoe UI, Microsoft YaHei, Arial" font-size="24" font-weight="500">
+    Rust + WebView2 的离线 Markdown 编辑与审阅工作台
+  </text>
+
+  <rect x="96" y="252" width="172" height="42" rx="10" fill="#2E6EEB"/>
+  <text x="122" y="280" fill="#FFFFFF" font-family="Segoe UI, Microsoft YaHei, Arial" font-size="18" font-weight="600">Offline First</text>
+
+  <rect x="282" y="252" width="196" height="42" rx="10" fill="#1F3E66" stroke="#77A8FF"/>
+  <text x="308" y="280" fill="#E7F0FF" font-family="Segoe UI, Microsoft YaHei, Arial" font-size="18" font-weight="600">Windows Native</text>
+
+  <rect x="492" y="252" width="204" height="42" rx="10" fill="#1D403B" stroke="#7AE7D0"/>
+  <text x="518" y="280" fill="#E8FFF9" font-family="Segoe UI, Microsoft YaHei, Arial" font-size="18" font-weight="600">Three Modes</text>
+</svg>
