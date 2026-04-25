@@ -67,8 +67,8 @@ md-bider is not "web app in disguise." It uses a Rust desktop shell (`tao + wry`
 | Editing modes | `IR`, `SV`, `WYSIWYG` |
 | Tabbed workflow | Create, switch, and close multiple local markdown files |
 | File operations | New, open, save, save as |
-| Keyboard shortcuts | `Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S / Ctrl+W` |
-| CLI opening | `md-bider.exe <file.md>` |
+| Keyboard shortcuts | macOS: `Cmd+N / Cmd+O / Cmd+S / Cmd+Shift+S / Cmd+W`; Windows/Linux: `Ctrl+...` |
+| CLI opening | macOS/Linux: `md-bider <file.md>`; Windows: `md-bider.exe <file.md>` |
 | Offline runtime | JS/CSS/i18n assets embedded in binary |
 
 ## Get md-bider
@@ -87,6 +87,7 @@ cargo build --release
 
 - Windows: `./target/release/md-bider.exe`
 - macOS: `./target/release/md-bider`
+- macOS app bundle: `./scripts/package-macos.sh dev`, then open `dist/md-bider.app`
 
 ## Project Story
 

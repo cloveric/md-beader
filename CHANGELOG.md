@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.8] - 2026-04-25
+
+### Added
+
+- Add a local macOS packaging script that builds a signed `md-bider.app` bundle and zip archive.
+
+### Changed
+
+- Ad-hoc sign macOS release app bundles in the GitHub release workflow.
+- Clarify macOS shortcuts, CLI usage, and app bundle packaging in both READMEs.
+
 ## [0.4.6] - 2026-03-06
 
 ### Fixed

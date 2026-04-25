@@ -67,8 +67,8 @@ md-bider 采用 Rust 桌面壳（`tao + wry`）和本地文件优先的架构，
 | 编辑模式 | `IR`、`SV`、`WYSIWYG` |
 | 标签页工作流 | 新建、切换、关闭多个本地 Markdown 文件 |
 | 文件操作 | 新建、打开、保存、另存为 |
-| 快捷键 | `Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S / Ctrl+W` |
-| 命令行打开 | `md-bider.exe <file.md>` |
+| 快捷键 | macOS：`Cmd+N / Cmd+O / Cmd+S / Cmd+Shift+S / Cmd+W`；Windows/Linux：`Ctrl+...` |
+| 命令行打开 | macOS/Linux：`md-bider <file.md>`；Windows：`md-bider.exe <file.md>` |
 | 离线运行 | JS/CSS/i18n 资源内嵌 |
 
 ## 获取 md-bider
@@ -87,6 +87,7 @@ cargo build --release
 
 - Windows：`./target/release/md-bider.exe`
 - macOS：`./target/release/md-bider`
+- macOS app bundle：`./scripts/package-macos.sh dev`，然后打开 `dist/md-bider.app`
 
 ## 项目定位
 
